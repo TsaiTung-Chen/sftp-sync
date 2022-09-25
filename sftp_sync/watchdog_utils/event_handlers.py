@@ -102,8 +102,7 @@ class DelMovEventHandler(PatternMatchingEventHandler):
         log_folder = os.path.dirname(log_path)
         if not os.path.isdir(log_folder):
             os.makedirs(log_folder, exist_ok=True)
-        with open(log_path, 'w'):  # create an empty log file
-            pass
+        open(log_path, 'w').close()  # create an empty log file
         
         return dict()  # an empty dictionary
     
