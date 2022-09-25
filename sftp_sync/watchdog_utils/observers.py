@@ -10,10 +10,17 @@ from watchdog.observers import Observer
 
 
 class IndicativeObserver(Observer):
+    def schedule(self, event_handler, path, recursive=True):
+        import os
+        
+        path = os.path.realpath(os.path.expanduser(path))
+        
+        return super().schedule(event_handler, path, recursive=recursive)
+    
     def start(self):
         super().start()
         print('Now start watching events occurring on the monitored ' \
-              'location:')
+              'location: ', end='')
         
         for watch, handlers in self._handlers.items():
             assert len(handlers) == 1, handlers

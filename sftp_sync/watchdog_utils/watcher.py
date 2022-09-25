@@ -7,32 +7,28 @@ Created on Sun Sep 18 22:47:17 2022
 """
 
 class Watcher:
-    def __init__(self, watch_path, ignore_patterns=[]):
+    def __init__(self, 
+                 watch_path, 
+                 ignore_patterns=[], 
+                 case_sensitive=True, 
+                 recursive=True, 
+                 log_folder=None):
         import os
         from .observers import IndicativeObserver
-        from .events import DeleteEventHandler
+        from .event_handlers import DelMovEventHandler
         
-        watch_path = os.path.realpath(os.path.expanduser(watch_path))
+        log_folder = log_folder or os.path.join(watch_path, '.sftp-sync')
         
-        log_path = os.path.join(watch_path, '.sftp-sync', 'log.txt')
-        ignore_patterns.append(os.path.dirname(log_path))
-        
-        event_handler = DeleteEventHandler(log_path=log_path, 
+        event_handler = DelMovEventHandler(log_folder, 
                                            patterns=['*'], 
                                            ignore_patterns=ignore_patterns, 
-                                           case_sensitive=True)
+                                           case_sensitive=case_sensitive)
         observer = IndicativeObserver()
-        observer.schedule(event_handler, watch_path, recursive=True)
+        observer.schedule(event_handler, watch_path, recursive=recursive)
         
-        self._observer = observer
-    
-    @property
-    def observer(self):
-        return self._observer
+        self.observer = observer
     
     def watch(self):
-        import time
-        
         self.observer.start()
         try:
             while True:

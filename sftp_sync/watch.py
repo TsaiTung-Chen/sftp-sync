@@ -18,6 +18,6 @@ def watch(*args):
 
 if __name__ == '__main__':
     import sys
-    
+        
     watch(*sys.argv[1:])
 

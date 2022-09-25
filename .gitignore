@@ -1,5 +1,9 @@
 .DS_Store
 .ds_store
 
-.spyproject
-__pycache__
+.spyproject/
+__pycache__/
+
+tests/test_folder/*
+temp/
+temp*
