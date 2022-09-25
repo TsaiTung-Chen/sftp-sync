@@ -26,11 +26,5 @@ def get_watch_path(args):
 
 
 def get_ignore_patterns(args):
-    import os
-    
-    patterns = args[1:]
-    for i, pattern in enumerate(patterns):
-        patterns[i] = os.path.expanduser(pattern)
-    
-    return patterns
+    return args[1:]
 
