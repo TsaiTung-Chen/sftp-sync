@@ -91,10 +91,10 @@ class DelMovEventHandler(PatternMatchingEventHandler):
         previous_length = len(self.log)
         self._log.update(record)
         current_length = len(self.log)
-        overwrote = (previous_length == current_length)
+        overwrite = (previous_length == current_length)
         
-        return overwrote
-    
+        return overwrite
+	
     def fetch_log(self, log_path):
         if os.path.isfile(log_path):
             return load_log(log_path)
@@ -106,18 +106,19 @@ class DelMovEventHandler(PatternMatchingEventHandler):
         
         return dict()  # an empty dictionary
     
-    def write_down(self, event):
+    def mark_down(self, event):
         record = self.make_record(event)
-        overwrote = self.update_log(record)
+        overwrite = self.update_log(record)
         
-        if overwrote:
+		# update log file
+        if overwrite:
             dump_log(self.log, self.log_path)
         else:
             dump_record(record, fpath=self.log_path)
     
     def on_deleted(self, event):
-        self.write_down(event)
+        self.mark_down(event)
     
     def on_moved(self, event):
-        self.write_down(event)
+        self.mark_down(event)
 
