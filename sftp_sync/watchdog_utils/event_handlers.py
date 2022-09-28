@@ -110,7 +110,7 @@ class DelMovEventHandler(PatternMatchingEventHandler):
         record = self.make_record(event)
         overwrite = self.update_log(record)
         
-		# update log file
+        # update log file
         if overwrite:
             dump_log(self.log, self.log_path)
         else:
