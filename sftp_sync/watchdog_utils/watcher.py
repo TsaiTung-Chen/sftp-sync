@@ -14,8 +14,8 @@ class Watcher:
                  recursive=True, 
                  log_folder=None):
         import os
-        from .observers import IndicativeObserver
-        from .event_handlers import DelMovEventHandler
+        from .observer import IndicativeObserver
+        from .event_handler import DelMovEventHandler
         
         log_folder = log_folder or os.path.join(watch_path, '.sftp-sync')
         
