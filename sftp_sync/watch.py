@@ -6,7 +6,7 @@ Created on Sun Sep 18 22:47:17 2022
 @author: tungchentsai
 """
 
-def watch(*args):
+def main(*args):
     from .watchdog_utils.watcher import Watcher
     from .watchdog_utils.parser import parse_arguments
     
@@ -19,5 +19,5 @@ def watch(*args):
 if __name__ == '__main__':
     import sys
         
-    watch(*sys.argv[1:])
+    main(*sys.argv[1:])
 
