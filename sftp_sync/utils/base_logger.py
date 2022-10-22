@@ -14,6 +14,10 @@ import json
 END_OF_RECORD = ',\n'
 LENGTH_OF_EOR = len(END_OF_RECORD)
 
+DELETED = 'deleted'
+MOVED = 'moved'
+MODIFIED = 'modified'
+
 
 class BaseLogger:
     def __init__(self, log_path):
@@ -42,14 +46,17 @@ class BaseLogger:
         
         return dict()  # an empty dictionary
     
-    def get_epoch_time(self):
+    def current_epoch_time(self):
         return time.time()
     
-    def get_formatted_time(self, epoch_time):
+    def current_formatted_time(self, epoch_time):
         time_format = "%Y-%m-%d_%H:%M:%S"
         structured_time = time.localtime(epoch_time)
         
         return time.strftime(time_format, structured_time)
+    
+    def get_record(self, key, default=None):
+        return self.contents.get(key, default)
     
     def make_record(self, *args, **kwargs):
         raise NotImplementedError()
@@ -57,7 +64,7 @@ class BaseLogger:
     
     def update_log(self, record):
         previous_length = len(self.contents)
-        self._contents.update(record)
+        self.contents.update(record)
         current_length = len(self.contents)
         overwrite = (previous_length == current_length)
         
