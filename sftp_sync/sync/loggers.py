@@ -6,8 +6,6 @@ Created on Sat Oct  1 17:47:43 2022
 @author: tungchentsai
 """
 
-import os
-
 from ..utils.base_logger import BaseLogger, DELETED, MOVED, MODIFIED
 
 
