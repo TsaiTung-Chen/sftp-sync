@@ -19,7 +19,7 @@ def import_module():
     try:
         os.chdir(r"..")  # parent directory of sftp_sync package
         print(f'Working directory was changed to {os.getcwd()}')
-        from sftp_sync.watchdog_utils.watcher import Watcher
+        from sftp_sync.monitor.watcher import Watcher
     finally:
         os.chdir(original_working_directory)
         print(f'Working directory was changed back to {os.getcwd()}')

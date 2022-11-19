@@ -15,14 +15,14 @@ class Watcher:
                  log_folder=None):
         import os
         from .observer import IndicativeObserver
-        from .event_handler import DelMovEventHandler
+        from .event_handler import DeleteMoveEventHandler
         
         log_folder = log_folder or os.path.join(watch_path, '.sftp-sync')
         
-        event_handler = DelMovEventHandler(log_folder, 
-                                           patterns=['*'], 
-                                           ignore_patterns=ignore_patterns, 
-                                           case_sensitive=case_sensitive)
+        event_handler = DeleteMoveEventHandler(log_folder, 
+                                               patterns=['*'], 
+                                               ignore_patterns=ignore_patterns, 
+                                               case_sensitive=case_sensitive)
         observer = IndicativeObserver()
         observer.schedule(event_handler, watch_path, recursive=recursive)
         

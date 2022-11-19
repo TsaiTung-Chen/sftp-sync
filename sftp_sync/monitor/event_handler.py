@@ -9,10 +9,10 @@ Created on Sun Sep 18 22:47:17 2022
 import os
 from watchdog.events import PatternMatchingEventHandler
 
-from .logger import WatchdogLogger
+from .logger import MonitorLogger
 
 
-class DelMovEventHandler(PatternMatchingEventHandler):
+class DeleteMoveEventHandler(PatternMatchingEventHandler):
     def __init__(self, 
                  log_folder, 
                  patterns=['*'], 
@@ -21,7 +21,7 @@ class DelMovEventHandler(PatternMatchingEventHandler):
                  case_sensitive=True):
         log_folder = os.path.realpath(os.path.expanduser(log_folder))
         log_path = os.path.join(log_folder, 'watch.log')
-        logger = WatchdogLogger(log_path)
+        logger = MonitorLogger(log_path)
         
         if isinstance(ignore_patterns, str):
             ignore_patterns = [ignore_patterns]

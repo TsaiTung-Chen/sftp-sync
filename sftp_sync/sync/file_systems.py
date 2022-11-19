@@ -10,15 +10,12 @@ import os
 import shutil
 import paramiko
 
+from .sync_loggers import SyncLogger
+
 
 class BaseFileSystem:
-    def __init__(self, slash=None, logger=None):
-        self._slash = slash
+    def __init__(self, logger:SyncLogger=None):
         self._logger = logger
-    
-    @property
-    def slash(self):
-        return self._slash
     
     @property
     def logger(self):
@@ -36,36 +33,15 @@ class BaseFileSystem:
     def get_rmtime(self, path, default=None):
         return self.logger.get_rmtime(path, default=default)
     
-    def get_mdtime(self, path, default=None): raise NotImplementedError()
-    
 #TODO    @staticmethod
 #    def get_mvtime(path, default=None):
 #        raise NotImplementedError()
-    
-    def join(self, *args): raise NotImplementedError()
-    
-    def exists(self, path): raise NotImplementedError()
-    
-    def stat(self, path): raise NotImplementedError()
-    
-    def lstat(self, path): raise NotImplementedError()
-    
-    def remove(self, path, *, recursively=True): raise NotImplementedError()
-    
-    def move(self, source, destination, *, overwrite=False):
-        raise NotImplementedError()
-    
-    def transfer(self, source, destination, *, overwrite=False, **kwargs):
-        raise NotImplementedError()
 
 
 class LocalFileSystem(BaseFileSystem):
-    def __init__(self, slash=os.path.sep, **kwargs):
-        super().__init__(slash=slash, **kwargs)
-    
     def set_remote_file_system(self, remote_file_system):
         self._remote_file_system = remote_file_system
-
+    
     @property
     def remote_file_system(self):
         return self._remote_file_system
@@ -90,17 +66,19 @@ class LocalFileSystem(BaseFileSystem):
     def lstat(self, path):
         return os.lstat(path)
     
-    def listdir_attr(self, path):
-        for parent, folders, files in os.walk(path):
-            for filename in (folders + files):
-                yield filename, self.stat(filename)
-            
-            return  # not recursively
+    def list_attr(self, path):  # not recursively
+        parent, folders, files = next(os.walk(path))
+        for filename in (folders + files):
+            yield self.join(parent, filename), self.stat(filename)
     
-    def remove(self, path, *, st_mode=None, recursively=False):
-        # `st_mode` not used. It's for signature consistency of FileSystems
+    def mkdir(self, path, mode=511):
+        os.mkdir(path, mode=mode)
+    
+    def remove(self, path, *, recursively=False, _st_mode=None):
+        # `_st_mode` not used. It's for signature consistency of FileSystems
         
-        if os.path.isfile(path):
+        mode = self.stat(path).st_mode
+        if not self.S_ISDIR(mode):
             os.remove(path)
             return
         elif recursively:
@@ -108,7 +86,7 @@ class LocalFileSystem(BaseFileSystem):
             return
         os.rmdir(path)
     
-    def move(self, source, destination, *, overwrite=False):
+    def rename(self, source, destination, *, overwrite=False):
         if overwrite and self.exists(destination):
             self.remove(destination, recursively=True)
         os.rename(source, destination)
@@ -126,7 +104,7 @@ class RemoteFileSystem(BaseFileSystem):
         transport = paramiko.Transport((host, port))
         transport.connect(username=username, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
-        super().__init__(slash=slash, **kwargs)
+        super().__init__(**kwargs)
         
         self._settings = {
             "host": host,
@@ -136,6 +114,7 @@ class RemoteFileSystem(BaseFileSystem):
         }
         self._transport = transport
         self._sftp = sftp
+        self._slash = slash
     
     def set_local_file_system(self, local_file_system):
         self._local_file_system = local_file_system
@@ -143,6 +122,10 @@ class RemoteFileSystem(BaseFileSystem):
     @property
     def local_file_system(self):
         return self._local_file_system
+    
+    @property
+    def slash(self):
+        return self._slash
     
     @property
     def settings(self):
@@ -167,10 +150,10 @@ class RemoteFileSystem(BaseFileSystem):
         else:
             prefix = ''
         
-        return prefix + '/'.join([ s for s in path.split(r'/') if s ])
+        return prefix + self.slash.join( filter(None, path.split(self.slash)) )
     
     def join(self, *args):
-        return self.normpath(r'/'.join(args))
+        return self.normpath(self.slash.join(args))
     
     def exists(self, path):
         try:
@@ -185,12 +168,15 @@ class RemoteFileSystem(BaseFileSystem):
     def lstat(self, path):
         return self.sftp.lstat(path)
     
-    def listdir_attr(self, path):
+    def list_attr(self, path):
         for attr in self.sftp.listdir_attr(path):
             yield attr.filename, attr
     
-    def remove(self, path, *, st_mode=None, recursively=False):
-        st_mode = st_mode or self.stat(path).st_mode
+    def mkdir(self, path, mode=511):
+        self.sftp.mkdir(path, mode=mode)
+    
+    def remove(self, path, *, recursively=False, _st_mode=None):
+        st_mode = _st_mode or self.stat(path).st_mode
         
         if self.S_ISREG(st_mode):
             self.sftp.remove(path)
@@ -199,15 +185,15 @@ class RemoteFileSystem(BaseFileSystem):
             if recursively:
                 for entry, attr in self.listdir_attr(path):
                     entry = self.join(path, entry)
-                    self.remove(entry, st_mode=attr.st_mode, recursively=True)
+                    self.remove(entry, recursively=True, _st_mode=attr.st_mode)
             self.sftp.rmdir(path)
             return
         raise TypeError(f'{path} should be a folder or file.')
     
-    def move(self, source, destination, *, overwrite=False):
+    def rename(self, source, destination, *, overwrite=False):
         if overwrite and self.exists(destination):
             self.remove(destination, recursively=True)
-        os.rename(source, destination)
+        self.sftp.rename(source, destination)
     
     # Download
     def transfer(self, remotepath, localpath, *, overwrite=False, **kwargs):

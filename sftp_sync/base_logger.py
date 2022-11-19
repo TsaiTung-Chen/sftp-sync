@@ -22,7 +22,7 @@ MODIFIED = 'modified'
 class BaseLogger:
     def __init__(self, log_path):
         log_path = os.path.realpath(os.path.expanduser(log_path))
-        contents = self.fetch_log(log_path)
+        contents = self.load(log_path)
         
         self._log_path = log_path
         self._contents = contents
@@ -35,7 +35,7 @@ class BaseLogger:
     def contents(self):
         return self._contents
 	
-    def fetch_log(self, log_path):
+    def load(self, log_path):
         if os.path.isfile(log_path):
             return load_log(log_path)
         
@@ -55,24 +55,22 @@ class BaseLogger:
         
         return time.strftime(time_format, structured_time)
     
-    def get_record(self, key, default=None):
-        return self.contents.get(key, default)
+    def get_record(self, path, default=None):
+        return self.contents.get(path, default)
     
-    def make_record(self, *args, **kwargs):
+    def _make_record(self, *args, **kwargs):
         raise NotImplementedError()
         return dict()
     
-    def update_log(self, record):
+    def _update(self, record):
         previous_length = len(self.contents)
-        self.contents.update(record)
-        current_length = len(self.contents)
-        overwrite = (previous_length == current_length)
+        self.contents._update(record)
         
-        return overwrite
+        return len(self.contents) == previous_length  # been overwritten or not
     
-    def log(self, *args, **kwargs):
-        record = self.make_record(*args, **kwargs)
-        overwrite = self.update_log(record)
+    def log(self, *args, **kwargs):  # main
+        record = self._make_record(*args, **kwargs)
+        overwrite = self._update(record)
         
         # update log file
         if overwrite:
@@ -132,16 +130,15 @@ def dump_log(log, fpath, mode='w'):
     """
     
     list_of_strings = []
-    for key, value in log.items():
-        record = {key: value}
+    for path, value in log.items():
+        record = {path: value}
         json_string = json.dumps(record, ensure_ascii=False)
         truncated_json_string = json_string[1:-1]
         list_of_strings.append(truncated_json_string)
-    log_string = END_OF_RECORD.join(list_of_strings) + \
-        END_OF_RECORD
+    log_string = END_OF_RECORD.join(list_of_strings) + END_OF_RECORD
     
     with open(fpath, mode=mode, encoding='utf-8') as file:
-        file.truncate(0)  # delete the original contents
-        file.seek(0)  # move the cursor to the beginning
+#        file.truncate(0)  # delete the original contents
+#        file.seek(0)  # move the cursor to the beginning
         file.write(log_string)
 

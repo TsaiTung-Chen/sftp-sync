@@ -27,7 +27,7 @@ def run_module(module_name, *args):
 
 
 if __name__ == "__main__":
-    watch_module = 'sftp_sync.watch'
+    watch_module = 'watch'
     watch_path = os.path.realpath(os.path.expanduser(ABS_WATCH_PATH))
     
     run_module(watch_module, watch_path, *IGNORE_PATTERNS)
