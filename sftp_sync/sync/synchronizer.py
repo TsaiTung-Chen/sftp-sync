@@ -6,149 +6,47 @@ Created on Fri Oct  7 22:54:22 2022
 @author: tungchentsai
 """
 
-import functools
-
 from .file_systems import LocalFileSystem, RemoteFileSystem
-
-
-class Queue(list):  # a list of functions
-    def __init__(self, iterable=[]):
-        super().__init__(iterable)
-    
-    def __add__(self, x):
-        return self.from_iterable(super().__add__(x))
-    
-    def __getitem__(self, i):
-        queue_list = super().__getitem__(i)
-        
-        if isinstance(queue_list, list):
-            return self.from_iterable(queue_list)
-        return queue_list
-    
-    @classmethod
-    def from_iterable(cls, iterable):
-        return cls(iterable)
-    
-    @classmethod
-    def _raise_attribute_error(cls, attr):
-        raise AttributeError(
-            f"type object '{cls.__qualname__}' has no attribute '{attr}'")
-    
-    @classmethod  # remove parent method: `append`
-    @property
-    def append(cls): cls._raise_attribute_error('append')
-    
-    @classmethod
-    @property
-    def copy(cls): cls._raise_attribute_error('copy')
-    
-    @property
-    def human_readable(self):
-        n_ops = len(self)
-        n_digits = len(str(n_ops))
-        
-        return [f'|{self._zero_leading(i, n_ops, n_digits)}/{n_ops} '
-                f'{self._convert_to_text(op)}' for i, op in enumerate(self, 1)]
-    
-    def _zero_leading(self, i, n_ops, n_digits):
-        return ('{:0' + str(n_digits) + 'd}').format(i)
-    
-    def up(self, func, *args, **kwargs):
-        wrapper = functools.partial(func, *args, **kwargs)
-        super().append(wrapper)
-    
-    def run(self, remove_completed=True, print_fn=None):
-        def _run_operations():
-            nonlocal i
-            for i, (op, text) in enumerate(zip(self, self.human_readable), 1):
-                print_fn(text)
-                try:
-                    op()
-                    continue
-                except BaseException as e:
-                    i -= 1  # numbers of op to remove from the queue
-                    err_msg = '\n'.join([str(e),
-                                         '[Operation failed]:',
-                                         self.human_readable[i]])
-                    e.args = (err_msg,)
-                    raise e
-        
-        if print_fn is None:
-            print_fn = lambda *args, **kwargs: None
-        
-        i = 0
-        try:
-            _run_operations()
-        finally:
-            if remove_completed:
-                self[:] = self[i:]
-        
-        print_fn(f'[All {i} operations completed]')
-    
-    def print(self, index_or_slice=None, print_fn=print) -> str:
-        if index_or_slice is None:
-            human_readable = self.human_readable
-        else:
-            human_readable = self[index_or_slice].human_readable
-        human_readable = '\n'.join(human_readable)
-        
-        print_fn(human_readable)
-        
-        return human_readable
-    
-    def _convert_to_text(self, operation):
-        def _remove():
-            assert len(args) == 1, f'{operation.func}  {args}'
-            return ' '.join([f'REMOVE  | {args[0]}', kw_str])
-        
-        def _mkdir():
-            assert len(args) == 1, f'{operation.func}  {args}'
-            return ' '.join([f'MAKEDIR | {args[0]}', kw_str])
-        
-        def _rename():
-            assert len(args) == 2, f'{operation.func}  {args}'
-            return ' '.join([f'MOVE    | {args[0]} --> {args[1]}', kw_str])
-        
-        def _transfer():
-            assert len(args) == 2, f'{operation.func}  {args}'
-            if isinstance(operation.func.__self__, LocalFileSystem):
-                return ' '.join([f'UPLOAD  | {args[0]} --> {args[1]}', kw_str])
-            elif isinstance(operation.func.__self__, RemoteFileSystem):
-                return ' '.join([f'DOWNLOAD| {args[0]} --> {args[1]}', kw_str])
-            raise TypeError(f"Unknown function: {operation.func}")
-        
-        def _others():
-            raise TypeError(f"Unknown function: {operation.func}")
-        
-        func_name = operation.func.__name__
-        args = operation.args
-        kw_str = ' '.join([ f'{k}={v}' for k, v in operation.keywords.items() ])
-        
-        return {"remove": _remove,
-                "mkdir": _mkdir,
-                "rename": _rename,
-                "transfer": _transfer}.get(func_name, _others)()
+from .loggers import LocalLogger, RemoteLogger
+from .queue import Queue
 
 
 class Synchronizer:
-    def __init__(self, local_file_system, remote_file_system):
-        self._local_file_system = local_file_system
-        self._remote_file_system = remote_file_system
+    def __init__(self, host, port=22, username='', password=None, slash=r'/'):
+        local_fs = LocalFileSystem()
+        remote_fs = RemoteFileSystem(host,
+                                     port=port,
+                                     username=username,
+                                     password=password,
+                                     slash=slash)
+        local_fs.set_remote_file_system(remote_fs)
+        remote_fs.set_local_file_system(local_fs)
+        
+        self._local_fs = local_fs
+        self._remote_fs = remote_fs
         self._queue = Queue()
+        self._remote_log_path = None
     
     @property
-    def local_file_system(self):
-        return self._local_file_system
+    def local_fs(self):
+        return self._local_fs
     
     @property
-    def remote_file_system(self):
-        return self._remote_file_system
+    def remote_fs(self):
+        return self._remote_fs
     
     @property
     def queue(self):
         return self._queue
     
-    def sync_file(self, pathA, pathB, fsA, fsB):
+    @property
+    def remote_log_path(self):
+        return self._remote_log_path
+    
+    def set_remote_log_path(self, path):
+        self._remote_log_path = path
+    
+    def _compare_file(self, pathA, pathB, fsA, fsB):
         mdtimeA = fsA.get_mdtime(pathA)
         mdtimeB = fsB.get_mdtime(pathB, default=-1)
         rmtimeB = fsB.get_rmtime(pathB, default=-1)
@@ -156,15 +54,22 @@ class Synchronizer:
         if mdtimeB == mdtimeA:
             return
         elif rmtimeB > mdtimeA:  # if `pathB` was removed later
-            self.queue.up(fsA.remove, pathA)
+            self.queue.up(fsA.remove, (pathA,), time=rmtimeB)
             return
         elif mdtimeB > mdtimeA:  # if `pathA` is older
-            self.queue.up(fsB.transfer, pathB, pathA, overwrite=True)
+            self.queue.up(fsB.transfer,
+                          (pathB, pathA),
+                          {"overwrite": True},
+                          time=mdtimeB)
             return
         # if `pathB` does not exist or `pathA` is newer
-        self.queue.up(fsA.transfer, pathA, pathB, overwrite=True)
+        self.queue.up(fsA.transfer,
+                      (pathA, pathB),
+                      {"overwrite": True},
+                      time=mdtimeA)
     
-    def sync_dir(self, dirA, dirB, fsA, fsB, mode='skip', skip=[], _root=True):
+    def _compare_dir(self, dirA, dirB, fsA, fsB, 
+                     mode='skip', skip=[], _root=True):
         if _root and (mode == 'skip') and (dirA in skip or dirB in skip):
             return skip
         
@@ -172,11 +77,14 @@ class Synchronizer:
         rmtimeB = fsB.get_rmtime(dirB, default=0)
         
         if rmtimeB > mdtimeA:  # if `dirB` was removed later
-            self.queue.up(fsA.remove, dirA, recursively=True)
+            self.queue.up(fsA.remove,
+                          (dirA,),
+                          {"recursively": True},
+                          time=rmtimeB)
             return skip
         
         if fsB.exists(dirB) or not fsB.S_ISDIR(fsB.stat(dirB).st_mode):
-            self.queue.up(fsB.mkdir, dirB)
+            self.queue.up(fsB.mkdir, (dirB,), time=mdtimeA)
         
         for entryA, attrA in self.list_attr(dirA):  # walk through entries
             entryA = fsA.join(dirA, entryA)
@@ -187,45 +95,52 @@ class Synchronizer:
             
             modeA = attrA.st_mode
             if fsA.S_ISDIR(modeA):  # if it's a folder
-                self.sync_dir(
+                self._compare_dir(
                     entryA, entryB, fsA, fsB, mode=mode, skip=skip, _root=False)
-                if mode == 'mark':
-                    skip.append(entryB)
                 continue
             elif fsA.S_ISREG(modeA):  # if it's a file
-                self.sync_file(entryA, entryB, fsA, fsB)
+                self._compare_file(entryA, entryB, fsA, fsB)
                 if mode == 'mark':
                     skip.append(entryB)
                 continue
             raise TypeError(f'{entryA} should be a folder or file.')
         
-        skip.append(dirB)
+        if mode == 'mark':
+            skip.append(dirB)
         
         return skip
     
     def compare(self, local, remote, print_fn=None, idx_print=None) -> Queue:
-        if not self.local_file_system.S_ISDIR(
-                self.local_file_system.stat(local).st_mode):
+        if not self.local_fs.S_ISDIR(
+                self.local_fs.stat(local).st_mode):
             raise ValueError(f"`local` ({local}) must be a folder path")
-        if not self.remote_file_system.S_ISDIR(
-                self.remote_file_system.stat(remote).st_mode):
+        if not self.remote_fs.S_ISDIR(
+                self.remote_fs.stat(remote).st_mode):
             raise ValueError(f"`remote` ({remote}) must be a folder path")
         
-        local = self.local_file_system.normpath(local)
-        remote = self.remote_file_system.normpath(remote)
+        local = self.local_fs.normpath(local)
+        remote = self.remote_fs.normpath(remote)
         
-        skip = self.sync_dir(
+        local_logger, remote_logger = self._get_loggers(local, remote)
+        self.local_fs.set_logger(local_logger)
+        self.remote_fs.set_logger(remote_logger)
+        
+        # Walk through the local directory
+        skip = self._compare_dir(
             local,
             remote,
-            self.local_file_system,
-            self.remote_file_system,
+            self.local_fs,
+            self.remote_fs,
             mode='mark'
         )
-        self.sync_dir(
+        
+        # Walk through the remote directory and skip entries which have been
+        # compared before
+        self._compare_dir(
             remote,
             local,
-            self.remote_file_system,
-            self.local_file_system,
+            self.remote_fs,
+            self.local_fs,
             skip=skip
         )
         
@@ -234,6 +149,37 @@ class Synchronizer:
         
         return self.queue
     
-    def start(self, remove_completed=True, print_fn=None):  #TODO multithread
-        self.queue.run(remove_completed=remove_completed, print_fn=print_fn)
+    def sync(self, print_fn=None):  #TODO multithread
+        print_fn = print_fn or (lambda *msg: None)
+        
+        # Run all operations
+        for op, i, text in self.queue.generator():
+            print_fn(text)
+            op()
+            self.remote_fs.logger.log(op.get_event(persective='remote'))
+        print_fn('[All operations completed]')
+        
+        # Upload the temporary remote log to update the log file on the cloud
+        self.local_fs.transfer(
+            self.remote_fs.logger.log_path,
+            self.remote_log_path,
+            overwrite=True
+        )
+        print_fn('[Log file updated]')
+    
+    def _get_logger(self, local, remote):
+        # Download the remote log file on the SFTP server
+        remote_log = self.remote_fs.join(remote,
+                                         RemoteLogger.sftp_sync_folder,
+                                         RemoteLogger.filename)
+        remote_log_on_local = self.local_fs.join(local,
+                                                 RemoteLogger.sftp_sync_folder,
+                                                 RemoteLogger.filename)
+        self.remote_fs.download(remote_log, remote_log_on_local, overwrite=True)
+        self.set_remote_log_path(remote_log)
+        
+        # Initiate the loggers with local path. Both the local and remote log
+        # files will be saved in the local folder (.sftp-sync).
+        # PS. After syncing, the remote log file will be uploaded to the server
+        return LocalLogger(local), RemoteLogger(local)
 

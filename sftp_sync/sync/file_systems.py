@@ -10,16 +10,30 @@ import os
 import shutil
 import paramiko
 
-from .sync_loggers import SyncLogger
-
 
 class BaseFileSystem:
-    def __init__(self, logger:SyncLogger=None):
+    def set_logger(self, logger):
         self._logger = logger
     
     @property
     def logger(self):
-        return self._logger
+        if hasattr(self, '_logger'):
+            return self._logger
+        raise ValueError("Set the logger with method `set_logger` first")
+    
+    @property
+    def local_fs(self):
+        if hasattr(self, '_local_fs'):
+            return self._local_fs
+        raise ValueError("Set the local file system with method "
+                         "`set_local_file_system` first")
+    
+    @property
+    def remote_fs(self):
+        if hasattr(self, '_remote_fs'):
+            return self._remote_fs
+        raise ValueError("Set the remote file system with method "
+                         "`set_remote_file_system` first")
     
     def S_ISDIR(self, mode):
         return os.path.stat.S_ISDIR(mode)
@@ -39,12 +53,8 @@ class BaseFileSystem:
 
 
 class LocalFileSystem(BaseFileSystem):
-    def set_remote_file_system(self, remote_file_system):
-        self._remote_file_system = remote_file_system
-    
-    @property
-    def remote_file_system(self):
-        return self._remote_file_system
+    def set_remote_file_system(self, remote_fs):
+        self._remote_fs = remote_fs
     
     def get_mdtime(self, path, default=None):
         if self.exists(path):
@@ -92,19 +102,17 @@ class LocalFileSystem(BaseFileSystem):
         os.rename(source, destination)
     
     # Upload
-    def transfer(self, localpath, remotepath, *, overwrite=False, **kwargs):
-        if overwrite and self.remote_file_system.exists(remotepath):
-            self.remote_file_system.remove(remotepath, recursively=True)
-        self.remote_file_system._put(localpath, remotepath, **kwargs)
+    def transfer(self, local_path, remote_path, *, overwrite=False, **kwargs):
+        if overwrite and self.remote_fs.exists(remote_path):
+            self.remote_fs.remove(remote_path, recursively=True)
+        self.remote_fs.upload(local_path, remote_path, **kwargs)
 
 
 class RemoteFileSystem(BaseFileSystem):
-    def __init__(self, host, port=22, username='', password=None, 
-                 slash=r'/', **kwargs):
+    def __init__(self, host, port=22, username='', password=None, slash=r'/'):
         transport = paramiko.Transport((host, port))
         transport.connect(username=username, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
-        super().__init__(**kwargs)
         
         self._settings = {
             "host": host,
@@ -116,12 +124,8 @@ class RemoteFileSystem(BaseFileSystem):
         self._sftp = sftp
         self._slash = slash
     
-    def set_local_file_system(self, local_file_system):
-        self._local_file_system = local_file_system
-    
-    @property
-    def local_file_system(self):
-        return self._local_file_system
+    def set_local_file_system(self, local_fs):
+        self._local_fs = local_fs
     
     @property
     def slash(self):
@@ -196,14 +200,14 @@ class RemoteFileSystem(BaseFileSystem):
         self.sftp.rename(source, destination)
     
     # Download
-    def transfer(self, remotepath, localpath, *, overwrite=False, **kwargs):
-        if overwrite and self.local_file_system.exists(localpath):
-            self.local_file_system.remove(localpath, recursively=True)
-        self._get(remotepath, localpath, **kwargs)
+    def transfer(self, remote_path, local_path, *, overwrite=False, **kwargs):
+        if overwrite and self.local_fs.exists(local_path):
+            self.local_fs.remove(local_path, recursively=True)
+        self.download(remote_path, local_path, **kwargs)
     
-    def _get(self, remotepath, localpath, *args, **kwargs):
-        self.sftp.get(remotepath, localpath, *args, **kwargs)
+    def download(self, remote_path, local_path, *args, **kwargs):
+        return self.sftp.get(remote_path, local_path, *args, **kwargs)
     
-    def _put(self, localpath, remotepath, *args, **kwargs):
-        return self.sftp.put(localpath, remotepath, *args, **kwargs)
+    def upload(self, local_path, remote_path, *args, **kwargs):
+        return self.sftp.put(local_path, remote_path, *args, **kwargs)
 

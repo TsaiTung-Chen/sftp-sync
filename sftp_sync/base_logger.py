@@ -10,6 +10,10 @@ import os
 import time
 import json
 
+from watchdog.events import (EVENT_TYPE_DELETED, 
+                             EVENT_TYPE_MOVED, 
+                             EVENT_TYPE_MODIFIED)
+
 
 END_OF_RECORD = ',\n'
 LENGTH_OF_EOR = len(END_OF_RECORD)
@@ -18,14 +22,38 @@ DELETED = 'deleted'
 MOVED = 'moved'
 MODIFIED = 'modified'
 
+event_type_mapping = {
+    EVENT_TYPE_DELETED: DELETED, 
+    EVENT_TYPE_MOVED: MOVED, 
+    EVENT_TYPE_MODIFIED: MODIFIED
+}
+
 
 class BaseLogger:
-    def __init__(self, log_path):
-        log_path = os.path.realpath(os.path.expanduser(log_path))
+    END_OF_RECORD = END_OF_RECORD
+    LENGTH_OF_EOR = LENGTH_OF_EOR
+    
+    DELETED = DELETED
+    MOVED = MOVED
+    MODIFIED = MODIFIED
+    
+    sftp_sync_folder = '.sftp-sync'
+    filename = None
+    
+    def __init__(self, home_path):
+        if self.filename is None:
+            raise NotImplementedError
+        
+        log_path = os.path.join(home_path, self.sftp_sync_folder, self.filename)
         contents = self.load(log_path)
         
+        self._home_path = home_path
         self._log_path = log_path
         self._contents = contents
+    
+    @property
+    def home_path(self):
+        return self._home_path
     
     @property
     def log_path(self):
@@ -34,6 +62,18 @@ class BaseLogger:
     @property
     def contents(self):
         return self._contents
+    
+    @classmethod
+    def convert_event_type(event_type):
+        return convert_event_type(event_type)
+    
+    @classmethod
+    def current_epoch_time(cls):
+        return current_time()
+    
+    @classmethod
+    def format_time(cls, epoch_time):
+        return format_time(epoch_time)
 	
     def load(self, log_path):
         if os.path.isfile(log_path):
@@ -45,15 +85,6 @@ class BaseLogger:
         open(log_path, 'w').close()  # create an empty log file
         
         return dict()  # an empty dictionary
-    
-    def current_epoch_time(self):
-        return time.time()
-    
-    def current_formatted_time(self, epoch_time):
-        time_format = "%Y-%m-%d_%H:%M:%S"
-        structured_time = time.localtime(epoch_time)
-        
-        return time.strftime(time_format, structured_time)
     
     def get_record(self, path, default=None):
         return self.contents.get(path, default)
@@ -86,6 +117,23 @@ class BaseLogger:
     def dump(self, fpath, mode='w'):
         dump_log(self.contents, fpath, mode=mode)
 
+
+def convert_event_type(event_type):
+    if event_type in event_type_mapping:
+        return event_type_mapping[event_type]
+    raise ValueError(f"Unrecognized event type: {event_type}. "
+                     f"Must be one of {list(event_type_mapping.keys())}")
+
+
+def current_time():
+    return time.time()
+
+
+def format_time(epoch_time):
+    time_format = "%Y-%m-%d_%H:%M:%S"
+    structured_time = time.localtime(epoch_time)
+    
+    return time.strftime(time_format, structured_time)
 
 
 def dump_record(record, fpath, mode='a'):
