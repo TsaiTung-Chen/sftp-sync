@@ -7,8 +7,8 @@ Created on Sun Sep 18 22:47:17 2022
 """
 
 def main(*args):
-    from sftp_sync.monitor.watcher import Watcher
-    from sftp_sync.monitor.parser import parse_arguments
+    from sftp_sync.watch.watcher import Watcher
+    from sftp_sync.watch.parser import parse_arguments
     
     watch_path, ignore_patterns = parse_arguments(*args)
     watcher = Watcher(watch_path, ignore_patterns=ignore_patterns)
